@@ -12,7 +12,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 import { ChartNoAxesCombined, Save, SlidersHorizontal } from "lucide-react";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 type RevenuePageData = {
   range: {
@@ -68,14 +75,33 @@ const statusVariants: Record<
   failed: "destructive",
 };
 
+const revenueChartConfig = {
+  revenue: {
+    label: "Doanh thu",
+    color: "var(--color-chart-1)",
+  },
+  transactions: {
+    label: "Giao dịch",
+    color: "var(--color-chart-2)",
+  },
+} satisfies ChartConfig;
+
 function getDefaultDateRange(): { dateFrom: string; dateTo: string } {
   const to = new Date();
   const from = new Date(to);
   from.setDate(from.getDate() - 6);
 
+  const toDateKey = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  };
+
   return {
-    dateFrom: from.toISOString().slice(0, 10),
-    dateTo: to.toISOString().slice(0, 10),
+    dateFrom: toDateKey(from),
+    dateTo: toDateKey(to),
   };
 }
 
@@ -84,6 +110,13 @@ function formatCurrency(value: number): string {
     style: "currency",
     currency: "VND",
     maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatCompactNumber(value: number): string {
+  return new Intl.NumberFormat("vi-VN", {
+    notation: "compact",
+    maximumFractionDigits: 1,
   }).format(value);
 }
 
@@ -178,10 +211,16 @@ export default function TransactionsPage() {
     }
   };
 
-  const maxRevenue = Math.max(
-    ...(data?.timeSeries.map((item) => item.revenue) ?? [0]),
-    1,
+  const chartData = useMemo(
+    () =>
+      (data?.timeSeries ?? []).map((point) => ({
+        date: point.date,
+        revenue: point.revenue,
+        transactions: point.paymentCount,
+      })),
+    [data?.timeSeries],
   );
+
   const totalStatusCount =
     data?.statusDistribution.reduce((sum, item) => sum + item.count, 0) ?? 0;
 
@@ -299,7 +338,7 @@ export default function TransactionsPage() {
               Doanh thu theo ngày
             </CardTitle>
             <CardDescription>
-              Biểu đồ cột dựa trên payment đã thanh toán
+              Biểu đồ đường theo doanh thu và số giao dịch đã thanh toán
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -315,32 +354,82 @@ export default function TransactionsPage() {
             )}
 
             {(data?.timeSeries.length ?? 0) > 0 && (
-              <div className="space-y-3">
-                <div className="flex h-52 items-end gap-2">
-                  {data?.timeSeries.map((point) => {
-                    const ratio = point.revenue / maxRevenue;
-                    return (
-                      <div
-                        key={point.date}
-                        className="flex flex-1 flex-col items-center gap-2"
-                      >
-                        <div
-                          className="w-full rounded-md bg-primary/85"
-                          style={{
-                            height: `${Math.max(4, Math.round(ratio * 100))}%`,
-                          }}
-                        />
-                        <span className="text-[10px] text-muted-foreground">
-                          {point.date.slice(5)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Mức cao nhất: {formatCurrency(maxRevenue)}
-                </p>
-              </div>
+              <ChartContainer
+                config={revenueChartConfig}
+                className="h-64 w-full"
+              >
+                <LineChart
+                  accessibilityLayer
+                  data={chartData}
+                  margin={{ left: 8, right: 8, top: 8, bottom: 0 }}
+                >
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    minTickGap={24}
+                    tickFormatter={(value: string) =>
+                      value.slice(5).replace("-", "/")
+                    }
+                  />
+                  <YAxis
+                    yAxisId="revenue"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    width={72}
+                    tickFormatter={(value: number) =>
+                      formatCompactNumber(value)
+                    }
+                  />
+                  <YAxis
+                    yAxisId="transactions"
+                    orientation="right"
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    width={40}
+                    allowDecimals={false}
+                  />
+                  <ChartTooltip
+                    cursor={{ stroke: "var(--border)", strokeDasharray: "4 4" }}
+                    content={
+                      <ChartTooltipContent
+                        indicator="line"
+                        labelFormatter={(label) => `Ngày ${String(label)}`}
+                        formatter={(value, name) => {
+                          if (name === "revenue") {
+                            return formatCurrency(Number(value));
+                          }
+
+                          return `${Number(value)} giao dịch`;
+                        }}
+                      />
+                    }
+                  />
+                  <Line
+                    yAxisId="revenue"
+                    dataKey="revenue"
+                    type="monotone"
+                    stroke="var(--color-revenue)"
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 5 }}
+                  />
+                  <Line
+                    yAxisId="transactions"
+                    dataKey="transactions"
+                    type="monotone"
+                    stroke="var(--color-transactions)"
+                    strokeWidth={2}
+                    strokeDasharray="6 4"
+                    dot={false}
+                    activeDot={{ r: 4 }}
+                  />
+                </LineChart>
+              </ChartContainer>
             )}
           </CardContent>
         </Card>

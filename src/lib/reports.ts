@@ -8,6 +8,8 @@ import {
 
 type NumberLike = number | string | null;
 
+type DateLike = string | Date | null;
+
 type HistoryRow = {
   id: number;
   plate_number: string;
@@ -123,13 +125,43 @@ function isDateString(value: string | undefined): value is string {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function toDateKeyFromDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function toDateKey(value: DateLike): string {
+  if (!value) {
+    return "";
+  }
+
+  if (value instanceof Date) {
+    return toDateKeyFromDate(value);
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+    return value.slice(0, 10);
+  }
+
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return "";
+  }
+
+  return toDateKeyFromDate(parsed);
+}
+
 function getDefaultDateRange(): { dateFrom: string; dateTo: string } {
   const to = new Date();
   const from = new Date(to);
   from.setDate(from.getDate() - 6);
 
-  const dateTo = to.toISOString().slice(0, 10);
-  const dateFrom = from.toISOString().slice(0, 10);
+  const dateTo = toDateKeyFromDate(to);
+  const dateFrom = toDateKeyFromDate(from);
 
   return { dateFrom, dateTo };
 }
@@ -165,12 +197,12 @@ function mapHistoryRow(row: HistoryRow): HistoryEvent {
 
 function listDateBuckets(dateFrom: string, dateTo: string): string[] {
   const buckets: string[] = [];
-  const cursor = new Date(`${dateFrom}T00:00:00.000Z`);
-  const end = new Date(`${dateTo}T00:00:00.000Z`);
+  const cursor = new Date(`${dateFrom}T00:00:00`);
+  const end = new Date(`${dateTo}T00:00:00`);
 
   while (cursor <= end) {
-    buckets.push(cursor.toISOString().slice(0, 10));
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    buckets.push(toDateKeyFromDate(cursor));
+    cursor.setDate(cursor.getDate() + 1);
   }
 
   return buckets;
@@ -330,7 +362,7 @@ export async function getRevenueStatsByRange(params: {
   ] = await Promise.all([
     query<
       Array<{
-        bucket_date: string;
+        bucket_date: string | Date;
         revenue: NumberLike;
         payment_count: NumberLike;
       }>
@@ -368,7 +400,7 @@ export async function getRevenueStatsByRange(params: {
     ),
     query<
       Array<{
-        bucket_date: string;
+        bucket_date: string | Date;
         in_count: NumberLike;
         out_count: NumberLike;
         total: NumberLike;
@@ -424,24 +456,36 @@ export async function getRevenueStatsByRange(params: {
   const dateBuckets = listDateBuckets(dateFrom, dateTo);
 
   const paymentSeriesMap = new Map(
-    paymentSeriesRows.map((row) => [
-      row.bucket_date,
-      {
-        revenue: toNumber(row.revenue),
-        paymentCount: toNumber(row.payment_count),
-      },
-    ]),
+    paymentSeriesRows
+      .map((row) => {
+        const dateKey = toDateKey(row.bucket_date);
+
+        return [
+          dateKey,
+          {
+            revenue: toNumber(row.revenue),
+            paymentCount: toNumber(row.payment_count),
+          },
+        ] as const;
+      })
+      .filter(([dateKey]) => dateKey.length > 0),
   );
 
   const trafficSeriesMap = new Map(
-    trafficRows.map((row) => [
-      row.bucket_date,
-      {
-        inCount: toNumber(row.in_count),
-        outCount: toNumber(row.out_count),
-        total: toNumber(row.total),
-      },
-    ]),
+    trafficRows
+      .map((row) => {
+        const dateKey = toDateKey(row.bucket_date);
+
+        return [
+          dateKey,
+          {
+            inCount: toNumber(row.in_count),
+            outCount: toNumber(row.out_count),
+            total: toNumber(row.total),
+          },
+        ] as const;
+      })
+      .filter(([dateKey]) => dateKey.length > 0),
   );
 
   const timeSeries: RevenueTimePoint[] = dateBuckets.map((date) => {
