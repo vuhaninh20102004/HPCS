@@ -52,8 +52,40 @@ CREATE TABLE IF NOT EXISTS cameras (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Bảng cấu hình giá gửi xe
+CREATE TABLE IF NOT EXISTS parking_rates (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    vehicle_type ENUM('car', 'motorcycle', 'truck') NOT NULL UNIQUE,
+    unit_price DECIMAL(12,2) NOT NULL DEFAULT 0,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Bảng thanh toán (pay-before-entry)
+CREATE TABLE IF NOT EXISTS payments (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    invoice_number VARCHAR(64) NOT NULL UNIQUE,
+    plate_number VARCHAR(20),
+    vehicle_type ENUM('car', 'motorcycle', 'truck') DEFAULT 'car',
+    amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+    currency VARCHAR(10) NOT NULL DEFAULT 'VND',
+    payment_method ENUM('bank_transfer', 'cash', 'card') DEFAULT 'bank_transfer',
+    status ENUM('pending', 'paid', 'failed') NOT NULL DEFAULT 'pending',
+    xgate_reference VARCHAR(100),
+    matched_content TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    paid_at TIMESTAMP NULL,
+    synced_at TIMESTAMP NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payments_status_created_at ON payments(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_payments_paid_at ON payments(paid_at);
+CREATE INDEX IF NOT EXISTS idx_payments_invoice_number ON payments(invoice_number);
+CREATE INDEX IF NOT EXISTS idx_payments_synced_at ON payments(synced_at);
+
 -- INSERT Dữ liệu mặc định
 -- Tài khoản admin (Mật khẩu: admin123 - bcrypt hoặc raw tùy backend, ở đây lưu raw demo hoặc plain text do không có bcrypt gen)
 -- LƯU Ý: Ở hệ thống thực tế phải lưu hash. Đây là bản demo mock.
-INSERT IGNORE INTO users (username, password_hash, full_name, role) 
+INSERT IGNORE INTO users (username, password_hash, full_name, role)
 VALUES ('admin', 'admin123', 'Quản trị viên', 'admin');

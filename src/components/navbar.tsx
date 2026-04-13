@@ -19,6 +19,7 @@ import {
   ParkingSquare,
   History,
   Camera,
+  ChartNoAxesCombined,
   UserCircle,
   LogOut,
   User,
@@ -29,6 +30,7 @@ const navItems = [
   { href: "/vehicles", label: "Phương tiện", icon: Car },
   { href: "/parking-slots", label: "Bãi đỗ", icon: ParkingSquare },
   { href: "/history", label: "Lịch sử", icon: History },
+  { href: "/transactions", label: "Doanh thu", icon: ChartNoAxesCombined },
   { href: "/camera", label: "Camera", icon: Camera },
 ];
 
@@ -85,12 +87,15 @@ export function Navbar() {
               <DropdownMenuLabel>Tài khoản của tôi</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/profile" className="flex items-center cursor-pointer">
+                <Link
+                  href="/profile"
+                  className="flex items-center cursor-pointer"
+                >
                   <User className="mr-2 h-4 w-4" />
                   <span>Hồ sơ cá nhân</span>
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem 
+              <DropdownMenuItem
                 className="flex items-center cursor-pointer text-destructive focus:text-destructive"
                 onClick={() => signOut({ callbackUrl: "/login" })}
               >
