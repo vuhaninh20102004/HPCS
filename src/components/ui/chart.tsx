@@ -116,7 +116,7 @@ type ChartTooltipContentProps = React.ComponentProps<"div"> & {
   active?: boolean;
   payload?: TooltipPayloadItem[];
   label?: string | number;
-  className?: string
+  className?: string;
   hideLabel?: boolean;
   hideIndicator?: boolean;
   labelFormatter?: (
@@ -147,7 +147,7 @@ const ChartTooltipContent = React.forwardRef<
       hideIndicator = false,
       labelFormatter,
       formatter,
-      indicator = "dot"
+      indicator = "dot",
     },
     ref,
   ) => {
