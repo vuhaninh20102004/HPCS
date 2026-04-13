@@ -2,7 +2,7 @@
 
 > Tài liệu cấu trúc và vận hành cho team phát triển.
 
-Chi tiết luồng thanh toán end-to-end: xem `PAYMENT_FLOW.md`.
+Toàn bộ tài liệu thanh toán và XGate được gom tại mục `=================THANH TOÁN====================` ở cuối file.
 
 ## Tech Stack
 
@@ -70,9 +70,7 @@ Chi tiết luồng thanh toán end-to-end: xem `PAYMENT_FLOW.md`.
 Ngoài các bảng cũ (`users`, `vehicles`, `parking_slots`, `history`, `cameras`), hệ thống hiện có thêm:
 
 - `parking_rates`: cấu hình giá theo loại xe (`vehicle_type`, `unit_price`, `is_active`)
-- `payments`: lưu hóa đơn thanh toán và trạng thái đối soát
-	- Trạng thái: `pending | paid | failed`
-	- Đồng bộ: `xgate_reference`, `matched_content`, `paid_at`, `synced_at`
+- `payments`: lưu hóa đơn thanh toán (chi tiết trạng thái và đối soát xem mục THANH TOÁN)
 
 Ghi chú thiết kế hiện tại:
 
@@ -97,74 +95,9 @@ Ghi chú thiết kế hiện tại:
 - `GET /api/reports/revenue?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD`
 	- Trả về revenue timeseries, status distribution, traffic series, totals, parking rates.
 
-### Payment và đối soát XGate
+### Ghi chú
 
-- `GET /api/payments?limit=20`
-- `GET /api/payments?invoice_number=HPCS-...`
-- `POST /api/payments`
-	- Tạo payment trạng thái `pending`.
-	- Nếu không truyền `amount`, hệ thống lấy đơn giá active từ `parking_rates` theo `vehicleType`.
-	- Trang `/payment` dùng trực tiếp loại xe + đơn giá thật từ bảng `parking_rates` (không dùng mock).
-
-- `POST /api/payments/gate`
-	- API cho team nhận diện biển số:
-		- `action=create`: tạo payment từ `plateNumber` + `vehicleType`.
-		- `action=verify`: kiểm tra `invoiceNumber` đã `paid` chưa để quyết định cho xe qua (`allowPass`).
-
-- `POST /api/payments/reconcile`
-	- Dùng cho trang `/payment` quét giao dịch XGate theo `invoiceNumber` và trả về trạng thái mới nhất để hiển thị thành công ngay.
-	- Endpoint này đã áp dụng đúng giới hạn gói XGate ở backend.
-	- Trên UI `/payment`: sau khi QR hiển thị sẽ tự đợi 10 giây, sau đó auto sync mỗi 5 giây cho tới khi thanh toán thành công.
-
-- `POST /api/payments/sync`
-	- Trigger đối soát thủ công với XGate.
-	- Match theo quy tắc: `invoice_number` xuất hiện trong `content` giao dịch chuyển khoản.
-
-### Gioi han goi XGate (bat buoc)
-
-- Rate limit: **5 requests / phút**
-- Kết quả tối đa: **50 giao dịch / trang**
-
-Code đã implement giới hạn tại:
-
-- `src/lib/payment-sync.ts` (rate limit 5 req/phút)
-- `src/lib/xgate.ts` (clamp limit tối đa 50/trang)
-
-- `GET /api/parking-rates`
-- `PATCH /api/parking-rates`
-	- Cập nhật loạt đơn giá.
-
-## HUONG DAN NHAN DIEN BIEN SO - QUAN TRONG
-
-> Team ANPR chi can goi **1 API**: `POST /api/payments/gate`.
-> Luong chuan: `create` -> hien thi QR thanh toan -> `verify` -> neu `allowPass=true` thi mo cong.
-> Neu vehicleType chua co gia active trong `parking_rates`, API tra ve `400` de yeu cau cau hinh gia truoc.
-
-Mau tao payment tu bien so:
-
-```json
-{
-	"action": "create",
-	"plateNumber": "30A12345",
-	"vehicleType": "car",
-	"paymentMethod": "bank_transfer"
-}
-```
-
-Mau verify de quyet dinh cho qua:
-
-```json
-{
-	"action": "verify",
-	"invoiceNumber": "HPCS-20260413-123000-1234",
-	"plateNumber": "30A12345"
-}
-```
-
-Ket qua can dung de mo cong:
-
-- `data.allowPass = true` hoac `data.decision = "ALLOW_PASS"` -> cho xe qua.
-- `data.allowPass = false` -> chua cho qua.
+- Toàn bộ API, logic và vận hành liên quan thanh toán/XGate: xem mục THANH TOÁN ở cuối tài liệu.
 
 ## Auth và RBAC
 
@@ -173,28 +106,7 @@ Ket qua can dung de mo cong:
 - Với request chưa đăng nhập:
 	- Route web: redirect về `/login`.
 	- Route API: trả JSON `401 Unauthorized`.
-- API yêu cầu role `admin`:
-	- `POST /api/payments/sync`
-	- `PATCH /api/parking-rates`
-
-## Luồng đồng bộ XGate
-
-Nguồn triển khai:
-
-- `src/lib/xgate.ts`: gọi API XGate và normalize payload.
-- `src/lib/payment-sync.ts`: đối soát payment pending.
-- `src/lib/payment-sync-scheduler.ts`: scheduler định kỳ.
-
-Nguyên tắc:
-
-- Giới hạn gọi XGate tối đa `5 requests/phút` (rate limit cục bộ process).
-- Chỉ cập nhật payment đang `pending`.
-- Khi match thành công: cập nhật `status=paid`, `paid_at`, `synced_at`, `xgate_reference`, `matched_content`.
-
-Scheduler:
-
-- Bootstrap ở `src/app/layout.tsx`.
-- Không chạy trong phase build production để tránh side effect build-time.
+- Danh sách API cần quyền `admin` theo từng nghiệp vụ được ghi tại mục chức năng tương ứng.
 
 ## Biến môi trường
 
@@ -211,23 +123,9 @@ AUTH_SECRET=replace-with-secure-random-string
 
 # Python backend scanner
 PYTHON_API_URL=http://localhost:8000
-
-# XGate
-XGATE_API_KEY=your-xgate-api-key
-XGATE_API_URL=https://xgate.vn/api/v1/transactions
-XGATE_ACCOUNT=9394441571
-XGATE_SYNC_ENABLED=false
-XGATE_SYNC_INTERVAL_MS=300000
-XGATE_MAX_REQUESTS_PER_RUN=1
-XGATE_PAGE_LIMIT=50
-XGATE_TYPE=in
-
-# Payment QR (VietQR)
-PAYMENT_QR_BANK_CODE=mb
-PAYMENT_QR_ACCOUNT_NUMBER=9394441571
-PAYMENT_QR_ACCOUNT_NAME=LE VAN NHAT
-PAYMENT_QR_TEMPLATE=compact2
 ```
+
+Biến môi trường cho XGate và VietQR được ghi tập trung tại mục THANH TOÁN.
 
 ## Setup development
 
@@ -280,5 +178,149 @@ npm run lint
 npm run build
 ```
 =================THANH TOÁN====================
+
+## Tài liệu thanh toán (chuẩn dùng cho team)
+
+Toàn bộ logic và hướng dẫn liên quan đến thanh toán được chuẩn hóa trong phần này.
+Tài liệu luồng chi tiết nâng cao: xem `PAYMENT_FLOW.md`.
+
+### 1) Mục tiêu nghiệp vụ
+
+- Tạo hóa đơn thanh toán cho lượt xe theo đúng loại xe và đơn giá đang active trong `parking_rates`.
+- Sinh QR chuyển khoản thật (VietQR) để người dùng quét thanh toán.
+- Đối soát giao dịch chuyển khoản qua XGate để cập nhật trạng thái hóa đơn theo thời gian thực.
+- Cung cấp API thống nhất cho team nhận diện biển số để tạo hóa đơn và xác minh mở cổng.
+
+### 2) Luồng chuẩn trên trang `/payment`
+
+1. Người dùng chọn loại xe từ dữ liệu thật trong DB (`parking_rates`).
+2. Frontend gọi `POST /api/payments` để tạo hóa đơn trạng thái `pending`.
+3. Backend trả về thông tin hóa đơn kèm `paymentQr` (URL QR thật).
+4. UI hiển thị QR, đợi 10 giây, sau đó tự đối soát mỗi 5 giây bằng `POST /api/payments/reconcile`.
+5. Khi hóa đơn chuyển `paid`, UI hiển thị popup thành công và tự tắt sau khoảng 5 giây (vẫn cho phép đóng tay).
+
+### 3) Logic đối soát XGate
+
+- Chỉ xử lý các hóa đơn đang `pending`.
+- Điều kiện match: nội dung giao dịch chuyển khoản chứa `invoice_number`.
+- Khi match thành công, cập nhật các trường:
+	- `status = paid`
+	- `paid_at`
+	- `synced_at`
+	- `xgate_reference`
+	- `matched_content`
+- Giới hạn bắt buộc theo gói XGate:
+	- Tối đa 5 request/phút.
+	- Tối đa 50 giao dịch/trang.
+
+### 4) API thanh toán cần dùng
+
+- `GET /api/payments?limit=20`
+- `GET /api/payments?invoice_number=HPCS-...`
+
+- `POST /api/payments`
+	- Tạo hóa đơn thanh toán.
+	- Nếu không truyền `amount`, backend tự lấy giá active theo `vehicleType`.
+
+- `POST /api/payments/reconcile`
+	- Đối soát theo từng `invoiceNumber`, dùng cho trang `/payment`.
+
+- `POST /api/payments/sync`
+	- Trigger đối soát thủ công (thường dùng cho admin hoặc tác vụ vận hành).
+
+- `POST /api/payments/gate`
+	- `action=create`: tạo hóa đơn từ `plateNumber` + `vehicleType`.
+	- `action=verify`: kiểm tra hóa đơn đã `paid` chưa để quyết định mở cổng (`allowPass`).
+
+- `GET /api/parking-rates`
+- `PATCH /api/parking-rates`
+	- Cập nhật loạt đơn giá.
+	- Yêu cầu quyền `admin`.
+
+RBAC liên quan thanh toán:
+
+- `POST /api/payments/sync`: yêu cầu quyền `admin`.
+
+### 5) Hướng dẫn team nhận diện biển số (ANPR)
+
+Luồng chuẩn:
+
+- `create` -> hiển thị QR thanh toán -> `verify` -> nếu `allowPass=true` thì mở cổng.
+- Nếu `vehicleType` chưa có giá active trong `parking_rates`, API trả `400` để yêu cầu cấu hình giá trước.
+
+Mẫu tạo payment từ biển số:
+
+```json
+{
+	"action": "create",
+	"plateNumber": "30A12345",
+	"vehicleType": "car",
+	"paymentMethod": "bank_transfer"
+}
+```
+
+Mẫu verify để quyết định cho xe qua:
+
+```json
+{
+	"action": "verify",
+	"invoiceNumber": "HPCS-20260413-123000-1234",
+	"plateNumber": "30A12345"
+}
+```
+
+Kết quả cần dùng để mở cổng:
+
+- `data.allowPass = true` hoặc `data.decision = "ALLOW_PASS"` -> cho xe qua.
+- `data.allowPass = false` -> chưa cho qua.
+
+### 6) Cấu hình QR và XGate qua biến môi trường
+
+```bash
+# XGate
+XGATE_API_KEY=your-xgate-api-key
+XGATE_API_URL=https://xgate.vn/api/v1/transactions
+XGATE_ACCOUNT=9394441571
+XGATE_SYNC_ENABLED=false
+XGATE_SYNC_INTERVAL_MS=300000
+XGATE_MAX_REQUESTS_PER_RUN=1
+XGATE_PAGE_LIMIT=50
+XGATE_TYPE=in
+
+# VietQR
+PAYMENT_QR_BANK_CODE=mb
+PAYMENT_QR_ACCOUNT_NUMBER=9394441571
+PAYMENT_QR_ACCOUNT_NAME=LE VAN NHAT
+PAYMENT_QR_TEMPLATE=compact2
+```
+
+### 7) Quy ước trạng thái thanh toán
+
+- `pending`: đã tạo hóa đơn, chưa xác nhận thanh toán.
+- `paid`: đã match giao dịch và xác nhận thanh toán thành công.
+- `failed`: thanh toán lỗi hoặc hủy theo nghiệp vụ.
+
+### 8) Nguồn triển khai và nguyên tắc đồng bộ
+
+Nguồn triển khai:
+
+- `src/lib/xgate.ts`: gọi API XGate và normalize payload.
+- `src/lib/payment-sync.ts`: đối soát payment pending.
+- `src/lib/payment-sync-scheduler.ts`: scheduler định kỳ.
+
+Nguyên tắc:
+
+- Giới hạn gọi XGate tối đa `5 requests/phút` (rate limit cục bộ process).
+- Chỉ cập nhật payment đang `pending`.
+- Khi match thành công: cập nhật `status=paid`, `paid_at`, `synced_at`, `xgate_reference`, `matched_content`.
+- Scheduler bootstrap tại `src/app/layout.tsx`.
+- Scheduler không chạy trong phase build production để tránh side effect build-time.
+
+### 9) Checklist vận hành nhanh
+
+- Đảm bảo có đơn giá active cho từng loại xe trong `parking_rates` trước khi tạo hóa đơn.
+- Kiểm tra đúng tài khoản nhận tiền qua ENV (`XGATE_ACCOUNT`, `PAYMENT_QR_ACCOUNT_NUMBER`).
+- Nếu cần đồng bộ nền định kỳ, bật `XGATE_SYNC_ENABLED=true` và cấu hình interval phù hợp.
+- Team ANPR tích hợp chuẩn theo thứ tự: `create` -> hiển thị QR -> `verify` -> mở cổng khi `allowPass=true`.
 
 =================END THANH TOÁN====================
