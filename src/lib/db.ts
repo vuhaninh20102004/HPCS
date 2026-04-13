@@ -26,10 +26,23 @@ const pool = mysql.createPool({
 
 export default pool;
 
+type DbParam =
+  | string
+  | number
+  | bigint
+  | boolean
+  | Date
+  | null
+  | undefined
+  | Buffer
+  | Uint8Array
+  | {}
+  | Record<string, unknown>;
+
 /**
  * Helper: thực thi query
  */
-export async function query<T>(sql: string, params?: any[]): Promise<T> {
-  const [rows] = await pool.execute(sql, params);
+export async function query<T>(sql: string, params?: DbParam[]): Promise<T> {
+  const [rows] = await pool.query(sql, params);
   return rows as T;
 }

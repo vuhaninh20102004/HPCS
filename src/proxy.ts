@@ -3,9 +3,17 @@ import { getToken } from "next-auth/jwt";
 import type { NextRequest } from "next/server";
 
 export async function proxy(request: NextRequest) {
-  const token = await getToken({ req: request, secret: process.env.AUTH_SECRET });
-  
-  const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
+  const token = await getToken({
+    req: request,
+    secret: process.env.AUTH_SECRET,
+  });
+  const pathname = request.nextUrl.pathname;
+  const isApiRoute = pathname.startsWith("/api/");
+  const isAdminOnlyApi =
+    pathname.startsWith("/api/payments/sync") ||
+    (pathname.startsWith("/api/parking-rates") && request.method === "PATCH");
+
+  const isAuthRoute = pathname.startsWith("/login");
 
   if (isAuthRoute) {
     if (token) {
@@ -16,15 +24,25 @@ export async function proxy(request: NextRequest) {
 
   // Not an auth route, and NOT logged in
   if (!token) {
+    if (isApiRoute) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
     let from = request.nextUrl.pathname;
     if (request.nextUrl.search) {
       from += request.nextUrl.search;
     }
     return NextResponse.redirect(
-      new URL(`/login?from=${encodeURIComponent(from)}`, request.url)
+      new URL(`/login?from=${encodeURIComponent(from)}`, request.url),
     );
   }
-  
+
+  if (isAdminOnlyApi) {
+    if (token.role !== "admin") {
+      return NextResponse.json({ message: "Forbidden" }, { status: 403 });
+    }
+  }
+
   return null;
 }
 
