@@ -50,6 +50,7 @@ Chi tiết luồng thanh toán end-to-end: xem `PAYMENT_FLOW.md`.
 │   │       └── payments/
 │   │           ├── route.ts
 │   │           ├── gate/route.ts
+│   │           ├── reconcile/route.ts
 │   │           └── sync/route.ts
 │   ├── components/
 │   ├── lib/
@@ -110,9 +111,24 @@ Ghi chú thiết kế hiện tại:
 		- `action=create`: tạo payment từ `plateNumber` + `vehicleType`.
 		- `action=verify`: kiểm tra `invoiceNumber` đã `paid` chưa để quyết định cho xe qua (`allowPass`).
 
+- `POST /api/payments/reconcile`
+	- Dùng cho trang `/payment` quét giao dịch XGate theo `invoiceNumber` và trả về trạng thái mới nhất để hiển thị thành công ngay.
+	- Endpoint này đã áp dụng đúng giới hạn gói XGate ở backend.
+	- Trên UI `/payment`: sau khi QR hiển thị sẽ tự đợi 10 giây, sau đó auto sync mỗi 5 giây cho tới khi thanh toán thành công.
+
 - `POST /api/payments/sync`
 	- Trigger đối soát thủ công với XGate.
 	- Match theo quy tắc: `invoice_number` xuất hiện trong `content` giao dịch chuyển khoản.
+
+### Gioi han goi XGate (bat buoc)
+
+- Rate limit: **5 requests / phút**
+- Kết quả tối đa: **50 giao dịch / trang**
+
+Code đã implement giới hạn tại:
+
+- `src/lib/payment-sync.ts` (rate limit 5 req/phút)
+- `src/lib/xgate.ts` (clamp limit tối đa 50/trang)
 
 - `GET /api/parking-rates`
 - `PATCH /api/parking-rates`
@@ -263,3 +279,6 @@ uvicorn main:app --reload
 npm run lint
 npm run build
 ```
+=================THANH TOÁN====================
+
+=================END THANH TOÁN====================
