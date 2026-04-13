@@ -42,9 +42,7 @@ export async function POST(request: Request) {
         status: payment.status,
         syncSummary,
       },
-      message: allowPass
-        ? "Đã thanh toán thành công"
-        : syncSummary.message,
+      message: allowPass ? "Đã thanh toán thành công" : syncSummary.message,
     });
   } catch (error) {
     return NextResponse.json(

@@ -235,28 +235,29 @@ export default function PaymentPage() {
     void loadParkingRates();
   }, [loadParkingRates]);
 
-  const fetchPaymentByInvoice = useCallback(async (
-    invoiceNumber: string,
-  ): Promise<PaymentResponse | null> => {
-    const response = await fetch(
-      `/api/payments?invoice_number=${encodeURIComponent(invoiceNumber)}`,
-      {
-        method: "GET",
-        cache: "no-store",
-      },
-    );
+  const fetchPaymentByInvoice = useCallback(
+    async (invoiceNumber: string): Promise<PaymentResponse | null> => {
+      const response = await fetch(
+        `/api/payments?invoice_number=${encodeURIComponent(invoiceNumber)}`,
+        {
+          method: "GET",
+          cache: "no-store",
+        },
+      );
 
-    const payload = (await response.json()) as {
-      data?: PaymentResponse | null;
-      message?: string;
-    };
+      const payload = (await response.json()) as {
+        data?: PaymentResponse | null;
+        message?: string;
+      };
 
-    if (!response.ok) {
-      throw new Error(payload.message ?? "Không thể làm mới trạng thái");
-    }
+      if (!response.ok) {
+        throw new Error(payload.message ?? "Không thể làm mới trạng thái");
+      }
 
-    return payload.data ?? null;
-  }, []);
+      return payload.data ?? null;
+    },
+    [],
+  );
 
   const createPendingPayment = async () => {
     if (!selectedRate) {
@@ -415,9 +416,7 @@ export default function PaymentPage() {
   useEffect(() => {
     const invoiceNumber = payment?.invoiceNumber;
     const shouldAutoSync =
-      Boolean(invoiceNumber) &&
-      payment?.status === "pending" &&
-      hasVisibleQr;
+      Boolean(invoiceNumber) && payment?.status === "pending" && hasVisibleQr;
 
     if (!shouldAutoSync || !invoiceNumber) {
       setAutoSyncStarted(false);
@@ -459,7 +458,12 @@ export default function PaymentPage() {
     }
 
     showSuccessPopup(payment.invoiceNumber);
-  }, [lastSuccessInvoice, payment?.invoiceNumber, payment?.status, showSuccessPopup]);
+  }, [
+    lastSuccessInvoice,
+    payment?.invoiceNumber,
+    payment?.status,
+    showSuccessPopup,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -677,7 +681,9 @@ export default function PaymentPage() {
                 onClick={() => void syncPaymentFromXGate({ source: "manual" })}
                 disabled={syncing || !payment?.invoiceNumber}
               >
-                <RefreshCcw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+                <RefreshCcw
+                  className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`}
+                />
                 {syncing ? "Đang quét XGate..." : "Quét giao dịch XGate"}
               </Button>
               <Button
@@ -692,7 +698,8 @@ export default function PaymentPage() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Giới hạn gói XGate: tối đa 5 request/phút, tối đa 50 giao dịch/trang.
+              Giới hạn gói XGate: tối đa 5 request/phút, tối đa 50 giao
+              dịch/trang.
             </p>
 
             {payment?.status === "pending" && hasVisibleQr && (
