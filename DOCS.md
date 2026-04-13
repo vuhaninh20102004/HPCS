@@ -49,6 +49,7 @@ Chi tiết luồng thanh toán end-to-end: xem `PAYMENT_FLOW.md`.
 │   │       ├── parking-rates/route.ts
 │   │       └── payments/
 │   │           ├── route.ts
+│   │           ├── gate/route.ts
 │   │           └── sync/route.ts
 │   ├── components/
 │   ├── lib/
@@ -102,6 +103,12 @@ Ghi chú thiết kế hiện tại:
 - `POST /api/payments`
 	- Tạo payment trạng thái `pending`.
 	- Nếu không truyền `amount`, hệ thống lấy đơn giá active từ `parking_rates` theo `vehicleType`.
+	- Trang `/payment` dùng trực tiếp loại xe + đơn giá thật từ bảng `parking_rates` (không dùng mock).
+
+- `POST /api/payments/gate`
+	- API cho team nhận diện biển số:
+		- `action=create`: tạo payment từ `plateNumber` + `vehicleType`.
+		- `action=verify`: kiểm tra `invoiceNumber` đã `paid` chưa để quyết định cho xe qua (`allowPass`).
 
 - `POST /api/payments/sync`
 	- Trigger đối soát thủ công với XGate.
@@ -110,6 +117,38 @@ Ghi chú thiết kế hiện tại:
 - `GET /api/parking-rates`
 - `PATCH /api/parking-rates`
 	- Cập nhật loạt đơn giá.
+
+## HUONG DAN NHAN DIEN BIEN SO - QUAN TRONG
+
+> Team ANPR chi can goi **1 API**: `POST /api/payments/gate`.
+> Luong chuan: `create` -> hien thi QR thanh toan -> `verify` -> neu `allowPass=true` thi mo cong.
+> Neu vehicleType chua co gia active trong `parking_rates`, API tra ve `400` de yeu cau cau hinh gia truoc.
+
+Mau tao payment tu bien so:
+
+```json
+{
+	"action": "create",
+	"plateNumber": "30A12345",
+	"vehicleType": "car",
+	"paymentMethod": "bank_transfer"
+}
+```
+
+Mau verify de quyet dinh cho qua:
+
+```json
+{
+	"action": "verify",
+	"invoiceNumber": "HPCS-20260413-123000-1234",
+	"plateNumber": "30A12345"
+}
+```
+
+Ket qua can dung de mo cong:
+
+- `data.allowPass = true` hoac `data.decision = "ALLOW_PASS"` -> cho xe qua.
+- `data.allowPass = false` -> chua cho qua.
 
 ## Auth và RBAC
 

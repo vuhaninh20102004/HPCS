@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -21,6 +21,9 @@ import {
 } from "@/components/ui/select";
 import { Copy, QrCode, RefreshCcw } from "lucide-react";
 
+type VehicleType = "car" | "motorcycle" | "truck";
+type PaymentMethod = "bank_transfer" | "cash" | "card";
+
 type PaymentQrData = {
   provider: "vietqr";
   qrImageUrl: string;
@@ -32,14 +35,22 @@ type PaymentQrData = {
   currency: string;
 };
 
+type ParkingRate = {
+  id: number;
+  vehicleType: VehicleType;
+  unitPrice: number;
+  isActive: boolean;
+  updatedAt: string;
+};
+
 type PaymentResponse = {
   id: number;
   invoiceNumber: string;
   plateNumber: string | null;
-  vehicleType: "car" | "motorcycle" | "truck";
+  vehicleType: VehicleType;
   amount: number;
   currency: string;
-  paymentMethod: "bank_transfer" | "cash" | "card";
+  paymentMethod: PaymentMethod;
   status: "pending" | "paid" | "failed";
   createdAt: string;
   paidAt: string | null;
@@ -56,19 +67,97 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
+function getVehicleLabel(type: VehicleType): string {
+  if (type === "motorcycle") {
+    return "Xe máy";
+  }
+
+  if (type === "truck") {
+    return "Xe tải";
+  }
+
+  return "Ô tô";
+}
+
 export default function PaymentPage() {
   const [plateNumber, setPlateNumber] = useState("");
-  const [vehicleType, setVehicleType] = useState<
-    "car" | "motorcycle" | "truck"
-  >("car");
-  const [paymentMethod, setPaymentMethod] = useState<
-    "bank_transfer" | "cash" | "card"
-  >("bank_transfer");
+  const [vehicleType, setVehicleType] = useState<VehicleType>("car");
+  const [paymentMethod, setPaymentMethod] =
+    useState<PaymentMethod>("bank_transfer");
+  const [parkingRates, setParkingRates] = useState<ParkingRate[]>([]);
+  const [ratesLoading, setRatesLoading] = useState(true);
+  const [ratesError, setRatesError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [payment, setPayment] = useState<PaymentResponse | null>(null);
 
+  const activeRates = useMemo(
+    () => parkingRates.filter((rate) => rate.isActive),
+    [parkingRates],
+  );
+
+  const selectedRate = useMemo(
+    () => activeRates.find((rate) => rate.vehicleType === vehicleType) ?? null,
+    [activeRates, vehicleType],
+  );
+
+  const loadParkingRates = useCallback(async () => {
+    setRatesLoading(true);
+    setRatesError(null);
+
+    try {
+      const response = await fetch("/api/parking-rates", {
+        method: "GET",
+        cache: "no-store",
+      });
+
+      const payload = (await response.json()) as {
+        data?: ParkingRate[];
+        message?: string;
+      };
+
+      if (!response.ok || !Array.isArray(payload.data)) {
+        throw new Error(payload.message ?? "Không thể tải cấu hình giá gửi xe");
+      }
+
+      const rates = payload.data;
+      setParkingRates(rates);
+
+      setVehicleType((previousVehicleType) => {
+        const hasCurrentActive = rates.some(
+          (rate) => rate.isActive && rate.vehicleType === previousVehicleType,
+        );
+
+        if (hasCurrentActive) {
+          return previousVehicleType;
+        }
+
+        return (
+          rates.find((rate) => rate.isActive)?.vehicleType ??
+          previousVehicleType
+        );
+      });
+    } catch (error) {
+      setRatesError(
+        error instanceof Error
+          ? error.message
+          : "Không thể tải cấu hình giá gửi xe",
+      );
+    } finally {
+      setRatesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadParkingRates();
+  }, [loadParkingRates]);
+
   const createPendingPayment = async () => {
+    if (!selectedRate) {
+      setMessage("Chưa có loại xe active hoặc chưa cấu hình giá gửi xe");
+      return;
+    }
+
     setLoading(true);
     setMessage(null);
 
@@ -80,7 +169,8 @@ export default function PaymentPage() {
         },
         body: JSON.stringify({
           plateNumber: plateNumber.trim() || undefined,
-          vehicleType,
+          vehicleType: selectedRate.vehicleType,
+          amount: selectedRate.unitPrice,
           paymentMethod,
         }),
       });
@@ -176,6 +266,12 @@ export default function PaymentPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {ratesError && (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {ratesError}
+              </div>
+            )}
+
             {payment?.paymentMethod === "bank_transfer" &&
               payment.paymentQr && (
                 <div className="rounded-xl border bg-white p-4">
@@ -217,7 +313,9 @@ export default function PaymentPage() {
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">Số tiền</p>
               <p className="text-xl font-bold">
-                {formatCurrency(payment?.amount ?? 0)}
+                {formatCurrency(
+                  payment?.amount ?? selectedRate?.unitPrice ?? 0,
+                )}
               </p>
             </div>
 
@@ -275,18 +373,29 @@ export default function PaymentPage() {
                 <Select
                   value={vehicleType}
                   onValueChange={(value) =>
-                    setVehicleType(value as "car" | "motorcycle" | "truck")
+                    setVehicleType(value as VehicleType)
                   }
+                  disabled={ratesLoading || activeRates.length === 0}
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Chọn loại xe" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="motorcycle">Motorcycle</SelectItem>
-                    <SelectItem value="car">Car</SelectItem>
-                    <SelectItem value="truck">Truck</SelectItem>
+                    {activeRates.map((rate) => (
+                      <SelectItem key={rate.id} value={rate.vehicleType}>
+                        {getVehicleLabel(rate.vehicleType)} -{" "}
+                        {formatCurrency(rate.unitPrice)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">
+                  {selectedRate
+                    ? `Giá hiện hành: ${formatCurrency(selectedRate.unitPrice)} (cập nhật ${new Date(selectedRate.updatedAt).toLocaleString("vi-VN")})`
+                    : ratesLoading
+                      ? "Đang tải bảng giá từ hệ thống..."
+                      : "Chưa có loại xe active trong bảng giá"}
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -294,7 +403,7 @@ export default function PaymentPage() {
                 <Select
                   value={paymentMethod}
                   onValueChange={(value) =>
-                    setPaymentMethod(value as "bank_transfer" | "cash" | "card")
+                    setPaymentMethod(value as PaymentMethod)
                   }
                 >
                   <SelectTrigger className="w-full">
@@ -310,8 +419,20 @@ export default function PaymentPage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button onClick={createPendingPayment} disabled={loading}>
+              <Button
+                onClick={createPendingPayment}
+                disabled={loading || ratesLoading || !selectedRate}
+              >
                 {loading ? "Đang tạo..." : "Tạo payment"}
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => void loadParkingRates()}
+                disabled={ratesLoading}
+              >
+                <RefreshCcw className="h-4 w-4" />
+                Tải lại bảng giá
               </Button>
               <Button
                 variant="outline"
