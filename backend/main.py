@@ -1,34 +1,79 @@
-import uvicorn
 from fastapi import FastAPI, HTTPException
-from camera.scanner import process_camera_frame
-from pydantic import BaseModel
-from typing import Optional
+from fastapi.middleware.cors import CORSMiddleware
+from camera.scanner import camera_manager, scan_plate, scan_plate_from_raw
+import base64
+import cv2
 
-app = FastAPI(title="HPCS Camera Backend", version="1.0.0")
+app = FastAPI(title="HPCS Camera Service")
 
-class ScanResult(BaseModel):
-    plate_number: Optional[str]
-    confidence: float
-    message: str
+# Cấu hình CORS cho phép NextJS gọi API từ cổng mặc định 3000
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.get("/")
-def read_root():
-    return {"message": "Camera Backend is running"}
+@app.on_event("shutdown")
+def shutdown_event():
+    camera_manager.release()
 
-@app.get("/api/scan-plate", response_model=ScanResult)
-def scan_plate(camera_id: str = "default_cam"):
+@app.get("/api/camera/health")
+def camera_health():
+    is_online = camera_manager.get_status()
+    if not is_online:
+        return {"status": "offline", "camera_id": "0"}
+    return {"status": "online", "camera_id": "0"}
+
+@app.get("/api/camera/capture")
+def camera_capture():
+    """Trả về frame hiện tại để hiển thị live stream (không chạy OCR)."""
+    base64_img = camera_manager.capture_frame()
+    if not base64_img:
+        raise HTTPException(status_code=500, detail="Không thể đọc dữ liệu từ webcam!")
+    return {
+        "status": "success",
+        "image_data": f"data:image/jpeg;base64,{base64_img}"
+    }
+
+@app.get("/api/camera/detect-live")
+def camera_detect_live():
     """
-    Endpoint mô phỏng lấy frame từ camera và nhận diện biển số
+    Chụp frame + chạy OCR trong 1 request.
+    Dùng cho tính năng nhận diện biển số liên tục (không cần bấm nút).
+    Gọi ở tần suất thấp hơn stream (~1 lần/1.5s) vì OCR tốn CPU.
     """
-    try:
-        result = process_camera_frame(camera_id)
-        return ScanResult(
-            plate_number=result.get("plate_number"),
-            confidence=result.get("confidence", 0.0),
-            message="Quét thành công"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    # Lấy raw frame để tránh encode/decode thừa
+    frame = camera_manager.capture_raw_frame()
+    if frame is None:
+        raise HTTPException(status_code=500, detail="Camera không khả dụng.")
 
-if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    # Chạy OCR trực tiếp trên raw frame
+    ocr_result = scan_plate_from_raw(frame)
+
+    # Cũng encode frame thành base64 để frontend có thể hiển thị ảnh tại thời điểm nhận diện
+    _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    frame_b64 = base64.b64encode(buffer).decode('utf-8')
+
+    return {
+        "plate_number": ocr_result["plate_number"],
+        "confidence": ocr_result["confidence"],
+        "image_data": f"data:image/jpeg;base64,{frame_b64}"
+    }
+
+@app.get("/api/scan-plate")
+def api_scan_plate(camera_id: str = "entry_cam_1"):
+    """Chụp ảnh + nhận diện biển số (khi bấm nút Chụp ảnh)."""
+    base64_img = camera_manager.capture_frame()
+    if not base64_img:
+        raise HTTPException(status_code=500, detail="Capture lỗi. File ảnh rỗng.")
+
+    result = scan_plate(base64_img)
+
+    return {
+        "camera_id": camera_id,
+        "image_data": f"data:image/jpeg;base64,{base64_img}",
+        "plate_number": result["plate_number"],
+        "confidence": result["confidence"]
+    }
