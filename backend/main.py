@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from camera.scanner import camera_manager, scan_plate, scan_plate_from_raw
+from payment import router as payment_router
 import base64
 import cv2
 
@@ -14,6 +15,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount PayOS Payment Router
+app.include_router(payment_router)
+
+# Mount Users Router
+from routers.users import router as users_router
+app.include_router(users_router)
+
+# Mount Gate Router
+from routers.gate_router import router as gate_router
+app.include_router(gate_router)
 
 @app.on_event("shutdown")
 def shutdown_event():
